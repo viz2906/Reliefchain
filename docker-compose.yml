@@ -1,0 +1,42 @@
+services:
+  postgres:
+    image: pgvector/pgvector:pg16
+    container_name: reliefchain_postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: reliefchain_db
+      POSTGRES_USER: relief_admin
+      POSTGRES_PASSWORD: relief_secret_password
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ./sql/01_schema.sql:/docker-entrypoint-initdb.d/01_schema.sql
+      - ./sql/02_views.sql:/docker-entrypoint-initdb.d/02_views.sql
+      - ./sql/03_procedures_and_triggers.sql:/docker-entrypoint-initdb.d/03_procedures_and_triggers.sql
+      - ./sql/05_seed.sql:/docker-entrypoint-initdb.d/05_seed.sql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U relief_admin -d reliefchain_db"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  mongodb:
+    image: mongo:7.0
+    container_name: reliefchain_mongo
+    restart: unless-stopped
+    environment:
+      MONGO_INITDB_DATABASE: reliefchain_logs
+    ports:
+      - "27017:27017"
+    volumes:
+      - mongodata:/data/db
+    healthcheck:
+      test: ["CMD", "mongosh", "--eval", "db.adminCommand('ping')"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  pgdata:
+  mongodata:

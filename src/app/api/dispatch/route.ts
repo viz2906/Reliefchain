@@ -1,108 +1,89 @@
 // ============================================================================
-// ReliefChain: ACID Dispatch & Algorithmic Routing API Route
-// File: src/app/api/dispatch/route.ts
+// GET  /api/dispatch[?requestId=]  - fleet, shipments, and (optionally) the
+//                                    Haversine-ranked depots for one request
+// POST /api/dispatch               - run the ACID stored procedure
+//                                    sp_process_resource_dispatch (ADMIN, LOGISTICS_STAFF)
+// Owner: Member 1 (Database Architect & Core Backend)
 // ============================================================================
 
-import { NextRequest, NextResponse } from 'next/server';
-import { query } from '@/lib/db/postgres';
+import { query, withTransaction } from '@/lib/db/postgres';
+import { HttpError, ok, optPosInt, posInt, readJson, route } from '@/lib/http';
+import { requireUser } from '@/lib/auth';
 
-export async function GET(req: NextRequest) {
-  try {
-    const { searchParams } = new URL(req.url);
-    const campId = searchParams.get('campId');
-    const categoryId = searchParams.get('categoryId');
-    const requiredQty = searchParams.get('requiredQty');
+export const dynamic = 'force-dynamic';
 
-    // 1. Fetch Fleet Readiness View
-    const fleetRes = await query(`SELECT * FROM v_fleet_readiness ORDER BY vehicle_id ASC;`);
+export const GET = route(async (req) => {
+  requireUser(req);
+  const requestId = optPosInt(new URL(req.url).searchParams.get('requestId'), 'requestId');
 
-    // 2. Fetch Active Shipments
-    const shipmentsRes = await query(`
-      SELECT 
-        ds.id,
-        ds.tracking_code,
-        ds.request_id,
-        ds.delivery_status,
-        ds.departure_time,
-        ds.estimated_arrival,
-        ds.actual_arrival,
-        ds.route_distance_km,
-        w.name AS warehouse_name,
-        c.name AS destination_camp,
-        c.latitude AS camp_lat,
-        c.longitude AS camp_lon,
-        vf.vehicle_number,
-        vf.vehicle_type,
-        rc.name AS item_name,
-        di.quantity_loaded
+  const [fleet, shipments] = await Promise.all([
+    query(`SELECT * FROM v_fleet_readiness ORDER BY vehicle_id`),
+    query(`
+      SELECT ds.id, ds.tracking_code, ds.request_id, ds.delivery_status, ds.departure_time,
+             ds.estimated_arrival, ds.actual_arrival, ds.route_distance_km,
+             w.name AS warehouse_name, c.name AS destination_camp,
+             vf.vehicle_number, vf.vehicle_type, u.full_name AS dispatched_by_name,
+             rc.name AS item_name, di.quantity_loaded, rc.unit_of_measure
       FROM dispatch_shipments ds
-      JOIN warehouses w ON ds.warehouse_id = w.id
-      JOIN relief_requests rr ON ds.request_id = rr.id
-      JOIN relief_camps c ON rr.camp_id = c.id
-      JOIN vehicle_fleet vf ON ds.vehicle_id = vf.id
-      JOIN dispatch_items di ON ds.id = di.shipment_id
-      JOIN resource_categories rc ON di.category_id = rc.id
-      ORDER BY ds.departure_time DESC;
-    `);
+      JOIN warehouses w           ON w.id = ds.warehouse_id
+      JOIN relief_requests rr     ON rr.id = ds.request_id
+      JOIN relief_camps c         ON c.id = rr.camp_id
+      JOIN vehicle_fleet vf       ON vf.id = ds.vehicle_id
+      JOIN dispatch_items di      ON di.shipment_id = ds.id
+      JOIN resource_categories rc ON rc.id = di.category_id
+      LEFT JOIN users u           ON u.id = ds.dispatched_by
+      ORDER BY CASE WHEN ds.delivery_status IN ('DELIVERED', 'FAILED') THEN 1 ELSE 0 END,
+               ds.departure_time DESC
+    `),
+  ]);
 
-    // 3. Nearest Warehouse Recommendation via Geospatial SQL Function
-    let nearestWarehouses: any[] = [];
-    if (campId && categoryId && requiredQty) {
-      const nearestRes = await query(
-        `SELECT * FROM fn_find_nearest_warehouse_with_stock($1, $2, $3);`,
-        [parseInt(campId, 10), parseInt(categoryId, 10), parseInt(requiredQty, 10)]
-      );
-      nearestWarehouses = nearestRes.rows;
-    }
-
-    return NextResponse.json({
-      success: true,
-      fleet: fleetRes.rows,
-      shipments: shipmentsRes.rows,
-      nearestWarehouses,
-    });
-  } catch (error: any) {
-    console.error('Dispatch API Error:', error);
-    return NextResponse.json(
-      { error: 'Failed to retrieve dispatch data', details: error.message },
-      { status: 500 }
-    );
+  // Depots that hold any stock of the requested item, nearest first
+  let nearestWarehouses: unknown[] = [];
+  if (requestId) {
+    const r = await query(`SELECT camp_id, category_id FROM relief_requests WHERE id = $1`, [requestId]);
+    if (r.rowCount === 0) throw new HttpError(404, `Relief request ${requestId} not found`);
+    const nearest = await query(`SELECT * FROM fn_find_nearest_warehouse_with_stock($1, $2, 1)`, [
+      r.rows[0].camp_id,
+      r.rows[0].category_id,
+    ]);
+    nearestWarehouses = nearest.rows;
   }
-}
 
-export async function POST(req: NextRequest) {
-  try {
-    const body = await req.json();
-    const { requestId, warehouseId, vehicleId, allocatedQty, dispatchedBy } = body;
+  return ok({ fleet: fleet.rows, shipments: shipments.rows, nearestWarehouses });
+});
 
-    if (!requestId || !warehouseId || !vehicleId || !allocatedQty || allocatedQty <= 0) {
-      return NextResponse.json(
-        { error: 'Missing required dispatch parameters or allocatedQty <= 0' },
-        { status: 400 }
+export const POST = route(async (req) => {
+  const user = requireUser(req, 'dispatch');
+  const body = await readJson(req);
+
+  const result = await withTransaction(
+    async (db) => {
+      const proc = await db.query<{ p_tracking_code: string }>(
+        `CALL sp_process_resource_dispatch($1, $2, $3, $4, $5, NULL)`,
+        [
+          posInt(body.requestId, 'requestId'),
+          posInt(body.warehouseId, 'warehouseId'),
+          posInt(body.vehicleId, 'vehicleId'),
+          posInt(body.allocatedQty, 'allocatedQty'),
+          user.userId,
+        ]
       );
-    }
+      const trackingCode = proc.rows[0].p_tracking_code;
+      const shipment = await db.query(
+        `SELECT id, tracking_code, route_distance_km, estimated_arrival FROM dispatch_shipments WHERE tracking_code = $1`,
+        [trackingCode]
+      );
+      return shipment.rows[0];
+    },
+    { userId: user.userId }
+  );
 
-    // Call Advanced ACID Transaction Stored Procedure in PostgreSQL
-    const procRes = await query(
-      `CALL sp_process_resource_dispatch($1, $2, $3, $4, $5, NULL);`,
-      [requestId, warehouseId, vehicleId, allocatedQty, dispatchedBy || 1]
-    );
-
-    const trackingCode = procRes.rows[0]?.p_tracking_code || 'RC-DISPATCHED';
-
-    return NextResponse.json({
-      success: true,
-      message: 'Resource dispatch processed atomically via ACID stored procedure',
-      trackingCode,
-    });
-  } catch (error: any) {
-    console.error('Process Dispatch Error:', error);
-    return NextResponse.json(
-      {
-        error: 'Dispatch Transaction Failed',
-        details: error.message,
-      },
-      { status: 400 }
-    );
-  }
-}
+  return ok(
+    {
+      message: 'Dispatch committed atomically by sp_process_resource_dispatch',
+      trackingCode: result.tracking_code,
+      shipment: result,
+    },
+    201
+  );
+});

@@ -241,12 +241,13 @@ The allocation of disaster resources must guarantee atomicity to prevent double-
 
 ### 6.2 Stored Functions
 - **`fn_find_nearest_warehouse_with_stock(p_camp_id, p_category_id, p_required_qty)`**: Implements the **Haversine Great-Circle Distance Formula** in PL/pgSQL to calculate spherical distances between the camp and operational warehouses, returning depots sorted ascending by distance.
-- **`fn_calculate_camp_urgency_score(p_camp_id)`**: Dynamically computes an urgency score from 0 to 100 based on occupancy percentage (40% weight), zone severity (35% weight), and pending critical requests (25% weight).
+- **`fn_calculate_camp_urgency_score(p_camp_id)`**: Dynamically computes an urgency score from 0 to 100 from occupancy ratio (up to 40 points), zone severity (5/15/25/35 points), 5 points per pending CRITICAL request and 2 points per unresolved SOS in the zone (up to 10), capped at 100.
 
 ### 6.3 Database Triggers
 - **`trg_chk_inventory_levels`**: Before insert/update trigger on `warehouse_inventory` rejecting any negative balance at the engine level.
 - **`trg_audit_request`**: After update trigger on `relief_requests` logging all status transitions into `allocation_audit_log`.
-- **`trg_shipment_delivery`**: Before update trigger on `dispatch_shipments` that, upon marking a shipment `DELIVERED`, automatically frees the vehicle back to `AVAILABLE` and marks the parent request `FULFILLED`.
+- **`trg_shipment_transition`**: Before update trigger on `dispatch_shipments` that blocks any change to a closed (`DELIVERED`/`FAILED`) shipment and stamps `actual_arrival`.
+- **`trg_shipment_delivery`**: After update trigger on `dispatch_shipments`. On `DELIVERED` it frees the vehicle, releases reserved stock and marks the request `FULFILLED` (or `PARTIALLY_FULFILLED`); on `FAILED` it frees the vehicle, returns the stock to the depot and re-opens the request.
 
 ### 6.4 Complex Analytical Views
 - **`v_camp_deficit_matrix`**: Computes outstanding itemized camp deficits ($Deficit = Requested - Delivered$).
@@ -258,7 +259,7 @@ The allocation of disaster resources must guarantee atomicity to prevent double-
 ## 7. Vector Database & Semantic AI Search (pgvector)
 
 1. **Input Data**: Unstructured, conversational, or panicked emergency distress messages (e.g. *"Our roof is flooded, my diabetic mother needs her insulin injections immediately"*).
-2. **Embedding Model**: 384-dimensional dense projection compatible with `sentence-transformers/all-MiniLM-L6-v2`.
+2. **Embedding Model**: Deterministic 384-dimensional embedding computed in the application (8 relief concept clusters in dimensions 0-63 + feature-hashed tokens in 64-383, L2-normalised). Its shape matches `sentence-transformers/all-MiniLM-L6-v2`, so a neural model can be swapped in without any schema change.
 3. **Storage**: PostgreSQL `vector(384)` column in `emergency_sos_signals`.
 4. **Index Architecture**: **HNSW (Hierarchical Navigable Small World)** with `m = 16, ef_construction = 64`.
 5. **Similarity Metric**: Cosine Distance operator (`<=>`):

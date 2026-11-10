@@ -1,194 +1,133 @@
-# ReliefChain: Disaster Relief Resource Allocation & Routing System
-### PES University - Department of Computer Science & Engineering
-### DBMS Experiential Learning – Level 3 Project (2-Member Team)
+# ReliefChain — Disaster Relief Resource Allocation & Routing System
+
+**DBMS Experiential Learning — Level 3 Project (2-member team)**
 
 [![PostgreSQL](https://img.shields.io/badge/PostgreSQL-16-blue.svg)](https://www.postgresql.org/)
 [![pgvector](https://img.shields.io/badge/pgvector-384--dim-green.svg)](https://github.com/pgvector/pgvector)
 [![MongoDB](https://img.shields.io/badge/MongoDB-7.0-brightgreen.svg)](https://www.mongodb.com/)
 [![Next.js](https://img.shields.io/badge/Next.js-15-black.svg)](https://nextjs.org/)
-[![TypeScript](https://img.shields.io/badge/TypeScript-5.7-blue.svg)](https://www.typescriptlang.org/)
-[![Docker](https://img.shields.io/badge/Docker-Compose-2496ED.svg)](https://www.docker.com/)
+
+After a cyclone, flood or landslide, relief coordinators have to answer four questions fast:
+*which camp needs what, which depot can supply it, which vehicle can carry it, and which of the thousands of panicked SOS messages are about the same need.*
+ReliefChain answers them with three database paradigms working together:
+
+| Paradigm | Engine | Used for |
+| :-- | :-- | :-- |
+| Relational | **PostgreSQL 16** | Camps, depots, inventory, fleet, dispatch — ACID transactions, row locks, triggers, views |
+| Vector | **pgvector** | 384-dim embeddings of SOS messages, HNSW index, cosine-distance (`<=>`) search |
+| Document | **MongoDB 7** | Drone telemetry with varying sensor payloads, incident feed, aggregation pipeline |
 
 ---
 
-## 🌟 Overview & Problem Statement
+## Team
 
-In the immediate aftermath of natural catastrophes (floods, cyclones, landslides), disaster management organizations struggle with:
-1. **Inventory Race Conditions**: Multiple logistics officers dispatching from the same warehouse stock simultaneously.
-2. **Sub-optimal Routing & Delivery Deficits**: Dispatching supplies without knowing spherical distances or camp deficits.
-3. **Unstructured Distress Processing**: Sifting through thousands of fuzzy, conversational SOS emergency messages without structured category tags.
-4. **Aerial Reconnaissance Telemetry Gaps**: Ingesting high-velocity, polymorphic IoT drone sensor streams.
+| Member | Role | Owns |
+| :-- | :-- | :-- |
+| **Vishnu Anand** (Member 1) | Database Architect & Core Backend | Relational schema, views, ACID procedure, Haversine function, triggers, seed data, curriculum queries, DB pool / transaction helper, dashboard · camps · requests · inventory · dispatch APIs, project setup |
+| **Prathiksha** (Member 2) | Full-Stack & NoSQL/Vector Specialist | pgvector layer + urgency function, embedding & triage engine, MongoDB + aggregation pipeline, JWT/bcrypt auth & RBAC, all UI, SQL Lab, Docker Compose, smoke tests |
 
-**ReliefChain** is an enterprise disaster response platform built on a dual-paradigm architecture:
-- **Relational SQL (PostgreSQL 16)**: ACID transactions, stored procedures, triggers, views, and 3NF normalization for inventory balancing and fleet dispatch.
-- **Vector Database (pgvector)**: 384-dimensional dense semantic embeddings for natural language distress call categorization and Cosine Distance similarity matching (`<=>`).
-- **Document NoSQL (MongoDB 7.0)**: Drone reconnaissance telemetry, thermal survivor detection, and multi-stage aggregation pipeline analysis.
+The file-by-file split is in [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ---
 
-## 👥 2-Member Team Responsibilities Matrix
+## Quick start
 
-| Team Member | Core Domain | Responsibilities & Deliverables |
-| :--- | :--- | :--- |
-| **Member 1** | **Database Architect & Core Backend Lead** | • Conceptual ER modeling & 3NF relational schema.<br>• DDL scripts (`01_schema.sql`, `02_views.sql`, `03_procedures_and_triggers.sql`).<br>• ACID Stored Procedure `sp_process_resource_dispatch` with row-level locks (`SELECT ... FOR UPDATE`).<br>• Geospatial Haversine Stored Function `fn_find_nearest_warehouse_with_stock`.<br>• Triggers (`trg_chk_inventory_levels`, `trg_audit_request`, `trg_shipment_delivery`).<br>• Multi-table analytical views (`v_camp_deficit_matrix`, `v_fleet_readiness`, `v_active_disaster_dashboard`). |
-| **Member 2** | **Full-Stack & NoSQL/Vector Specialist** | • pgvector 384-dimensional dense semantic embedding engine & Cosine similarity search.<br>• MongoDB NoSQL document schema & 4-Stage Aggregation Pipeline (`$match` &rarr; `$group` &rarr; `$project` &rarr; `$sort`).<br>• Stored Function `fn_calculate_camp_urgency_score`.<br>• Next.js 15 War Room dashboard & interactive tab routing.<br>• JWT authentication with bcrypt password hashing and Role-Based Access Control (RBAC).<br>• Evaluation SQL Lab workbench with live performance execution timer. |
+Prerequisites: **Node.js 18.18+** and **Docker Desktop** (running).
 
----
-
-## 🏗️ System Architecture & Database Paradigms
-
-```
-                      ┌────────────────────────────────────────┐
-                      │    ReliefChain Web Application         │
-                      │       (Next.js 15 + TypeScript)        │
-                      └──────────────────┬─────────────────────┘
-                                         │
-             ┌───────────────────────────┼───────────────────────────┐
-             │ REST API / Route Handlers │                           │
-             ▼                           ▼                           ▼
-  ┌───────────────────────┐  ┌───────────────────────┐  ┌─────────────────────────┐
-  │   PostgreSQL 16       │  │   pgvector Extension  │  │   MongoDB 7.0 (NoSQL)   │
-  │   (Relational SQL)    │  │   (Vector Database)   │  │   (Document Store)      │
-  ├───────────────────────┤  ├───────────────────────┤  ├─────────────────────────┤
-  │ • ACID Transactions   │  │ • 384-dim Embeddings  │  │ • IoT Drone Telemetry   │
-  │ • Stored Procedures   │  │ • HNSW Cosine Index   │  │ • Thermal Sensor Feeds  │
-  │ • Haversine Functions │  │ • Cosine Distance (<=>│  │ • Aggregation Pipeline  │
-  │ • Triggers & Audits   │  │ • Triage Categorizer  │  │ • Road Blockage Alerts  │
-  │ • Analytical Views    │  │ • Unstructured Search │  │ • Situational Feeds     │
-  └───────────────────────┘  └───────────────────────┘  └─────────────────────────┘
-```
-
----
-
-## 🚀 Quick Start Guide (Prerequisites: Node.js 18+, Docker Desktop)
-
-### 1. Clone & Install Dependencies
 ```bash
-git clone <your-repo-url>
-cd "dbms miniproject"
 npm install
+cp .env.example .env.local        # Windows PowerShell: copy .env.example .env.local
+docker compose up -d              # Postgres runs sql/01..05 automatically on first start
+npm run db:seed-mongo             # load drone telemetry + incident feed
+npm run dev                       # http://localhost:3000
 ```
 
-### 2. Start PostgreSQL (pgvector) and MongoDB Containers
-```bash
-docker compose up -d
-```
-*Both containers (`reliefchain_postgres` and `reliefchain_mongo`) will start healthy on ports `5432` and `27017`.*
+Check everything is wired up with `npm run test:connections`.
 
-### 3. Seed Database Datasets
-Run the automated seed commands:
-```bash
-# Seed PostgreSQL schema, views, procedures, and baseline records
-Get-Content "sql\01_schema.sql" | docker exec -i reliefchain_postgres psql -U relief_admin -d reliefchain_db
-Get-Content "sql\02_views.sql" | docker exec -i reliefchain_postgres psql -U relief_admin -d reliefchain_db
-Get-Content "sql\03_procedures_and_triggers.sql" | docker exec -i reliefchain_postgres psql -U relief_admin -d reliefchain_db
-Get-Content "sql\05_seed.sql" | docker exec -i reliefchain_postgres psql -U relief_admin -d reliefchain_db
+> **Port 5432 or 27017 already in use?** (e.g. another Postgres on your machine)
+> Start the stack on other ports and point `.env.local` at them:
+> ```bash
+> POSTGRES_PORT=5433 docker compose up -d          # PowerShell: $env:POSTGRES_PORT=5433; docker compose up -d
+> # .env.local -> DATABASE_URL=postgresql://relief_admin:relief_secret_password@localhost:5433/reliefchain_db
+> ```
 
-# Seed MongoDB collections with drone telemetry and situational incidents
-node scripts/seed-mongo.mjs
-```
+### Useful scripts
 
-### 4. Run Application
-```bash
-npm run dev
-```
-Open [http://localhost:3000](http://localhost:3000) in your browser.
+| Command | What it does |
+| :-- | :-- |
+| `npm run db:setup` | Re-run `sql/01..05` against `DATABASE_URL` (drops & rebuilds everything) |
+| `npm run db:seed-mongo` | Re-seed MongoDB (timestamps are relative to now — re-run before a demo) |
+| `npm run db:reset` | Both of the above |
+| `npm run test:connections` | Check both databases are reachable and seeded |
+| `npm run test:smoke` | 46 end-to-end API checks against a running app (then `db:reset`) |
+| `npm run typecheck` / `npm run build` | TypeScript check / production build |
+| `docker compose down -v` | Stop and wipe both databases |
 
 ---
 
-## 🔑 Demo Authentication & Role-Based Access Control (RBAC)
+## Demo accounts
 
-Use the Role Switcher in the top header to evaluate permissions:
+The login screen has one-click buttons for each role.
 
-| Role | Demo Credentials | Capabilities |
-| :--- | :--- | :--- |
-| **`ADMIN`** (Disaster Coordinator) | `admin@reliefchain.org` / `admin123` | Full administrative oversight, declare crisis zones, execute global ACID dispatches, inspect audit trails. |
-| **`LOGISTICS_STAFF`** (Depot Manager) | `logistics@reliefchain.org` / `logistics123` | Warehouse restock, dispatch allocations, fleet tracking, and carrier manifests. |
-| **`FIRST_RESPONDER`** (Field Officer) | `responder@reliefchain.org` / `responder123` | Submit emergency SOS signals, triage camps, view local deficits, and confirm deliveries. |
+| Role | Email / password | Can |
+| :-- | :-- | :-- |
+| `ADMIN` | `admin@reliefchain.org` / `admin123` | Everything, including the SQL Lab and registering camps |
+| `LOGISTICS_STAFF` | `logistics@reliefchain.org` / `logistics123` | Dispatch, mark shipments delivered/failed, restock |
+| `FIRST_RESPONDER` | `responder@reliefchain.org` / `responder123` | Broadcast SOS, raise requests, confirm deliveries, report incidents |
 
----
-
-## 🧪 Evaluator Walkthrough & Curriculum Features
-
-### 1. ACID Transaction Resource Dispatch
-- Navigate to **"ACID Dispatch & Routing"**.
-- Select a pending request (e.g. Marina Beach Community Shelter).
-- Notice that the origin warehouse dropdown is automatically sorted by **Geospatial Haversine Great-Circle Distance** (`fn_find_nearest_warehouse_with_stock`).
-- Click **"Execute ACID Dispatch"**:
-  - PostgreSQL stored procedure `sp_process_resource_dispatch` executes.
-  - Rows are locked with `FOR UPDATE`.
-  - Available stock is decremented and transferred to reserved.
-  - A unique tracking code (e.g. `RC-20261031-7853`) is generated.
-  - Fleet vehicle status updates to `IN_TRANSIT`.
-  - Audit log row is written to `allocation_audit_log`.
-- In the active dispatches table, click **"Mark Delivered"**:
-  - Database trigger `trg_shipment_delivery` fires.
-  - Vehicle is automatically returned to `AVAILABLE`.
-  - Relief request is updated to `FULFILLED`.
-
-### 2. Semantic Vector Search (pgvector)
-- Navigate to **"Emergency SOS & Vector Triage"**.
-- In the search bar, type natural language queries like:
-  - *"infant baby formula and clean water"*
-  - *"insulin prescription for diabetic elderly"*
-  - *"trauma bandages and surgical splints for fractures"*
-- Click **"Execute Vector Search"**:
-  - PostgreSQL performs a vector search using `<=>` (Cosine Distance) over `vector(384)` embeddings indexed with HNSW.
-  - Returns closest distress calls with confidence scores.
-
-### 3. NoSQL Aggregation Pipeline (MongoDB)
-- Navigate to **"Drone Telemetry (MongoDB NoSQL)"**.
-- View the 4-stage pipeline aggregation results:
-  - `$match` on active 24h window
-  - `$group` by disaster sector
-  - `$project` computed averages, road blockages count, and thermal survivor counts
-  - `$sort` by hazard severity descending
-
-### 4. Interactive SQL Lab
-- Navigate to **"Evaluation SQL Lab"**.
-- Click through presets for:
-  - Multi-Table INNER & LEFT JOINs
-  - GROUP BY & HAVING (> 300 units deficit)
-  - Scalar Subqueries (Above-average medical stock)
-  - Correlated Subqueries (`NOT EXISTS` for vulnerable camps without dispatches)
-  - Stored Procedures and Views
-- Click **"Run Query Live"** to see actual rows and execution latency.
+Permissions live in one place, [`src/lib/permissions.ts`](src/lib/permissions.ts), and are enforced by the API (the UI only hides what you can't use).
 
 ---
 
-## 📁 Repository Structure
+## Evaluator walkthrough
+
+1. **ACID dispatch** — *ACID Dispatch* tab. Pick a request; depots are ranked by `fn_find_nearest_warehouse_with_stock` (Haversine). Pick a vehicle and run it.
+   `sp_process_resource_dispatch` locks request → inventory → vehicle (`FOR UPDATE`), validates remaining demand, stock and payload, moves stock to *reserved*, creates the shipment + manifest, dispatches the vehicle and writes the audit row.
+   Try sending too much, or 500 meal cases on a drone — the procedure raises, the transaction rolls back, and nothing changes.
+2. **Triggers** — click **Delivered** on a shipment: `trg_shipment_delivery` frees the vehicle, releases reserved stock and fulfils the request. The ✕ (failed) button returns the stock to the depot and re-opens the request. The audit trail on the War Room shows who did it.
+3. **Vector search** — *SOS & Vector Triage*. Search *"insulin for diabetic elderly"*: the query is embedded to 384 dims and ranked with `ORDER BY embedding <=> $1`. Broadcasting an SOS embeds and classifies it in one step.
+4. **MongoDB** — *Drone Telemetry*. The 4-stage pipeline (`$match → $group → $project → $sort`) rolls up documents with different sensor payloads (thermal, multispectral, LiDAR). Toggle the time window or show the raw pipeline JSON.
+5. **SQL Lab** (ADMIN) — presets for joins, GROUP BY/HAVING, scalar & correlated subqueries, window functions, stored functions, views, pgvector, JSONB and `EXPLAIN ANALYZE`. Queries run in a `READ ONLY` transaction with a 5 s timeout and only one statement is allowed.
+6. **DML showcase** — `sql/queries/curriculum_queries.sql` (INSERT / UPDATE / DELETE / procedure CALL inside a transaction that is rolled back):
+   `docker exec -i reliefchain_postgres psql -U relief_admin -d reliefchain_db < sql/queries/curriculum_queries.sql`
+
+---
+
+## Architecture
 
 ```
-├── sql/
-│   ├── 01_schema.sql                  # DDL statements, constraints, and pgvector extension
-│   ├── 02_views.sql                   # Complex analytical views
-│   ├── 03_procedures_and_triggers.sql # ACID stored procedures, Haversine functions, and triggers
-│   ├── 04_queries.sql                 # Curriculum DML operations (JOIN, GROUP BY, HAVING, subqueries)
-│   └── 05_seed.sql                    # Realistic disaster relief dataset
-├── scripts/
-│   ├── seed-mongo.mjs                 # MongoDB telemetry and incident event feed seeder
-│   └── test-connections.mjs          # Database connection test suite
-├── src/
-│   ├── app/
-│   │   ├── api/                       # Next.js API Route Handlers (Auth, Dashboard, Camps, Requests, Inventory, Dispatch, SOS, Vector, Telemetry, SQL Lab)
-│   │   ├── globals.css                # Premium Glassmorphic Dark UI design system
-│   │   ├── layout.tsx                 # Root layout with typography and metadata
-│   │   └── page.tsx                   # Master interactive War Room UI
-│   └── lib/
-│       ├── auth.ts                    # JWT and RBAC authentication helpers
-│       ├── db/
-│       │   ├── postgres.ts            # PostgreSQL pool and query client
-│       │   └── mongo.ts               # MongoDB client and aggregation pipeline runner
-│       └── vector/
-│           └── semantic.ts            # 384-dimensional dense semantic vector embedding engine
-├── docs/
-│   └── DBMS_Level3_Project_Report_ReliefChain.md # Comprehensive Soft Copy Project Report
-├── docker-compose.yml                 # PostgreSQL (pgvector) and MongoDB container services
-├── package.json
-└── README.md
+                 Next.js 15 (React 19, TypeScript)
+     UI (src/components)  ──►  REST route handlers (src/app/api)
+                                   │  JWT auth + RBAC (src/lib/auth.ts)
+          ┌────────────────────────┼─────────────────────────┐
+          ▼                        ▼                         ▼
+   PostgreSQL 16             pgvector (same DB)          MongoDB 7
+   12 tables, 4 views,       vector(384) + HNSW,         drone_recon_telemetry,
+   procedure, functions,     cosine <=> search            incident_event_feed,
+   5 triggers, audit log                                  aggregation pipeline
 ```
 
----
+Key design decisions:
 
-## 📜 Academic Integrity & Citation
-Developed strictly for the **PES University DBMS Experiential Learning – Level 3** course requirements. All schema definitions, stored procedures, triggers, algorithms, and application code are original implementations.
+- **Integrity lives in the database.** Business rules are CHECK constraints, triggers and the dispatch procedure, so they hold even for writes that bypass the API.
+- **Who did it?** Every API write runs in a transaction that sets `app.user_id`; triggers read it through `fn_current_app_user()` to attribute audit rows.
+- **No fan-out in views.** Child tables are pre-aggregated before joining so totals aren't multiplied.
+- **Stock accounting:** `available` → (dispatch) → `reserved` → (delivered) gone / (failed) back to `available`.
+
+## Repository layout
+
+```
+sql/
+  01_schema.sql                  tables, constraints, indexes                  (Vishnu)
+  02_views.sql                   analytical views                              (Vishnu)
+  03_procedures_and_triggers.sql dispatch procedure, Haversine, triggers       (Vishnu)
+  04_vector_and_scoring.sql      pgvector column, HNSW index, urgency score    (Prathiksha)
+  05_seed.sql                    demo dataset                                  (Vishnu)
+  queries/curriculum_queries.sql DML + query showcase (not auto-run)           (Vishnu)
+scripts/                         db-setup, test-connections (Vishnu) · seed-mongo, smoke-test, convert_docs_to_pdf (Prathiksha)
+src/lib/                         db/postgres.ts, http.ts (Vishnu) · auth, permissions, db/mongo, vector/semantic, client/* (Prathiksha)
+src/app/api/                     dashboard, camps, requests, inventory, dispatch (Vishnu) · auth, sos, semantic-search, telemetry, sql-lab (Prathiksha)
+src/app/, src/components/        UI (Prathiksha)
+docs/                            project report (Vishnu) · viva report (Prathiksha)
+docker-compose.yml               database stack (Prathiksha)
+```
